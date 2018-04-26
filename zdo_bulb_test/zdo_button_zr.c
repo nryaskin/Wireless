@@ -67,7 +67,6 @@ PURPOSE:
 /*! \addtogroup ZB_TESTS */
 /*! @{ */
 
-static void send_data(zb_buf_t *buf);
 /*
   Bulb commands
  */
@@ -76,16 +75,13 @@ static void set_bulb_off_command(zb_uint8_t param) ZB_CALLBACK;
 static void set_bulb_level_up_command(zb_uint8_t param) ZB_CALLBACK;
 static void set_bulb_level_down_command(zb_uint8_t param) ZB_CALLBACK;
 static void set_bulb_level_command(zb_uint8_t param) ZB_CALLBACK;
-
+static void set_bulb_toggle(zb_uint8_t param) ZB_CALLBACK;
 #define B_ON           1
 #define B_OFF          2
 #define B_LEVEL_UP     4
 #define B_LEVEL_DOWN   8
 #define B_SET_LEVEL   16
-
-#ifndef APS_RETRANSMIT_TEST
-void data_indication(zb_uint8_t param) ZB_CALLBACK;
-#endif
+#define B_TOGGLE      32
 
 /*
   ZR joins to ZC, then sends APS packet.
@@ -142,18 +138,26 @@ MAIN()
 }
 
 
-int command;
 void zb_zdo_startup_complete(zb_uint8_t param) ZB_CALLBACK
 {
-  command = 1;
   zb_buf_t *buf = ZB_BUF_FROM_REF(param);
+  zb_buf_t *buf1 = zb_get_out_buf();
+  zb_buf_t *buf2 = zb_get_out_buf();
+  zb_buf_t *buf3 = zb_get_out_buf();
+  zb_buf_t *buf4 = zb_get_out_buf();
+  zb_buf_t *buf5 = zb_get_out_buf();
+  zb_buf_t *buf6 = zb_get_out_buf();
   if (buf->u.hdr.status == 0)
   {
     TRACE_MSG(TRACE_APS1, "Device STARTED OK", (FMT__0));
-#ifndef APS_RETRANSMIT_TEST
-    zb_af_set_data_indication(data_indication);
-#endif
-    send_data((zb_buf_t *)ZB_BUF_FROM_REF(param));
+
+    ZB_SCHEDULE_ALARM(set_bulb_on_command, ZB_REF_FROM_BUF(buf1), ZB_TIME_ONE_SECOND );
+    ZB_SCHEDULE_ALARM(set_bulb_off_command,  ZB_REF_FROM_BUF(buf2), ZB_TIME_ONE_SECOND * 3);
+    ZB_SCHEDULE_ALARM(set_bulb_toggle,  ZB_REF_FROM_BUF(buf3), ZB_TIME_ONE_SECOND * 3);
+    ZB_SCHEDULE_ALARM(set_bulb_level_up_command,  ZB_REF_FROM_BUF(buf4), ZB_TIME_ONE_SECOND * 5);
+    ZB_SCHEDULE_ALARM(set_bulb_level_down_command,  ZB_REF_FROM_BUF(buf5), ZB_TIME_ONE_SECOND * 8);
+    *ZB_GET_BUF_PARAM(buf6, zb_uint8_t) = 100;
+    ZB_SCHEDULE_ALARM(set_bulb_level_command,  ZB_REF_FROM_BUF(buf6), ZB_TIME_ONE_SECOND * 12);
   }
   else
   {
@@ -162,91 +166,96 @@ void zb_zdo_startup_complete(zb_uint8_t param) ZB_CALLBACK
   }
 }
 
-static void send_data(zb_buf_t *buf)
-{
-  zb_apsde_data_req_t *req;
-  zb_uint8_t *ptr = NULL;
-
-  ZB_BUF_INITIAL_ALLOC(buf, 1, ptr);
-  req = ZB_GET_BUF_TAIL(buf, sizeof(zb_apsde_data_req_t));
-  req->dst_addr.addr_short = 0; /* send to ZC */
-  req->addr_mode = ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
-  req->tx_options = ZB_APSDE_TX_OPT_ACK_TX;
-  req->radius = 1;
-  req->profileid = 2;
-  req->src_endpoint = 10;
-  req->dst_endpoint = 10;
-
-  buf->u.hdr.handle = 0x11;
-
-#if 0   /* test with wrong pan_id after join */
-  MAC_PIB().mac_pan_id = 0x1aaa;
-  ZB_UPDATE_PAN_ID();						   ?
-#endif 													 
-
-  ptr[0] = command;
-  command <<= 1;
-  if(command > 4)
-  {
-      command = 1;
-  }
-  TRACE_MSG(TRACE_APS2, "Sending apsde_data.request", (FMT__0));
-
-  ZB_SCHEDULE_CALLBACK(zb_apsde_data_request, ZB_REF_FROM_BUF(buf));
-}
-
-void set_bulb_on_command(zb_uint8_t param) {
-    zb_uint8_t *ptr;
-    zb_buf_t *asdu = (zb_buf_t *)ZB_BUF_FROM_REF(param);
-    
-    ZB_BUF_INITIAL_ALLOC(buf, 1, ptr);
-    req = ZB_GET_BUF_TAIL(buf, sizeof(zb_apsde_data_req_t));
-    req->dst_addr.addr_short = 0; 
+void fill_req_fields(zb_apsde_data_req_t *req) {
+    req->dst_addr.addr_short = 0;
     req->addr_mode = ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
-    req->tx_mode = ZB_APSDE_TX_OPT_ACK_TX;
+    req->tx_options = ZB_APSDE_TX_OPT_ACK_TX;
     req->radius = 1;
     req->profileid = 2;
     req->src_endpoint = 10;
     req->dst_endpoint = 10;
+}
 
-    buf->u.hdr.handle = 0x11;
+void set_bulb_on_command(zb_uint8_t param) {
+    zb_apsde_data_req_t *req;
+    zb_uint8_t *ptr;
+    zb_buf_t *buf = (zb_buf_t *) ZB_BUF_FROM_REF(param);
+    
+    ZB_BUF_INITIAL_ALLOC(buf, 1, ptr);
+    req = ZB_GET_BUF_TAIL(buf, sizeof(zb_apsde_data_req_t));
+    fill_req_fields(req);
 
     ptr[0] = B_ON;  
     ZB_SCHEDULE_CALLBACK(zb_apsde_data_request, ZB_REF_FROM_BUF(buf)); 
 }
 
 void set_bulb_off_command(zb_uint8_t param) {
+    zb_apsde_data_req_t *req;
+    zb_uint8_t *ptr;
+    zb_buf_t *buf = (zb_buf_t *) ZB_BUF_FROM_REF(param);
 
+    ZB_BUF_INITIAL_ALLOC(buf, 1, ptr);
+    req = ZB_GET_BUF_TAIL(buf, sizeof(zb_apsde_data_req_t));
+    fill_req_fields(req);
+
+    ptr[0] = B_OFF;
+    ZB_SCHEDULE_CALLBACK(zb_apsde_data_request, ZB_REF_FROM_BUF(buf));
 }
 
 void set_bulb_level_up_command(zb_uint8_t param) {
+    zb_apsde_data_req_t *req;
+    zb_uint8_t *ptr;
+    zb_buf_t *buf = (zb_buf_t *) ZB_BUF_FROM_REF(param);
 
+    ZB_BUF_INITIAL_ALLOC(buf, 1, ptr);
+    req = ZB_GET_BUF_TAIL(buf, sizeof(zb_apsde_data_req_t));
+    fill_req_fields(req);
+
+    ptr[0] = B_LEVEL_UP;
+    ZB_SCHEDULE_CALLBACK(zb_apsde_data_request, ZB_REF_FROM_BUF(buf));
 }
 
 void set_bulb_level_down_command(zb_uint8_t param) {
+    zb_apsde_data_req_t *req;
+    zb_uint8_t *ptr;
+    zb_buf_t *buf = (zb_buf_t *) ZB_BUF_FROM_REF(param);
 
+    ZB_BUF_INITIAL_ALLOC(buf, 1, ptr);
+    req = ZB_GET_BUF_TAIL(buf, sizeof(zb_apsde_data_req_t));
+    fill_req_fields(req);
+
+    ptr[0] = B_LEVEL_DOWN;
+    ZB_SCHEDULE_CALLBACK(zb_apsde_data_request, ZB_REF_FROM_BUF(buf));
 }
+
+void set_bulb_toggle(zb_uint8_t param) {
+    zb_apsde_data_req_t *req;
+    zb_uint8_t *ptr;
+    zb_buf_t *buf = (zb_buf_t *) ZB_BUF_FROM_REF(param);
+
+    ZB_BUF_INITIAL_ALLOC(buf, 1, ptr);
+    req = ZB_GET_BUF_TAIL(buf, sizeof(zb_apsde_data_req_t));
+    fill_req_fields(req);
+
+    ptr[0] = B_TOGGLE;
+    ZB_SCHEDULE_CALLBACK(zb_apsde_data_request, ZB_REF_FROM_BUF(buf));
+}
+
+#define LEVEL 10
 
 void set_bulb_level_command(zb_uint8_t param) {
+    zb_apsde_data_req_t *req;
+    zb_uint8_t *ptr;
+    zb_buf_t *buf = (zb_buf_t *) ZB_BUF_FROM_REF(param);
+    zb_uint8_t lvl = *ZB_GET_BUF_PARAM(buf,zb_uint8_t);
 
+    ZB_BUF_INITIAL_ALLOC(buf, 2, ptr);
+    req = ZB_GET_BUF_TAIL(buf, sizeof(zb_apsde_data_req_t));
+    fill_req_fields(req);
+
+    ptr[0] = B_SET_LEVEL;
+    ptr[1] = lvl;
+    ZB_SCHEDULE_CALLBACK(zb_apsde_data_request, ZB_REF_FROM_BUF(buf));
 }
-
-#ifndef APS_RETRANSMIT_TEST
-void data_indication(zb_uint8_t param)
-{
-  zb_uint8_t *ptr;
-  zb_buf_t *asdu = (zb_buf_t *)ZB_BUF_FROM_REF(param);
-
-  /* Remove APS header from the packet */
-  ZB_APS_HDR_CUT_P(asdu, ptr);
-
-  TRACE_MSG(TRACE_APS2, "data_indication: packet %p len %d handle 0x%x", (FMT__P_D_D,
-                         asdu, (int)ZB_BUF_LEN(asdu), asdu->u.hdr.status));
-
-
-  send_data(asdu);
-}
-#endif
-
 
 /*! @} */
