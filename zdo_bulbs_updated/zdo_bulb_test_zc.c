@@ -6,7 +6,7 @@
 #include "zb_zdo.h"
 #include "zb_secur.h"
 #include "zb_secur_api.h"
-#include "pwm_lib.h"
+#include "bulbs_app.h"
 
 /*! \addtogroup ZB_TESTS */
 /*! @{ */
@@ -24,7 +24,7 @@ zb_uint8_t g_key[16] = { 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0, 0, 0
 
 #define B_LEVEL_UP     1
 #define B_CHANNEL_SWITCH   2
-
+#define B_TOGGLE 4
 /*
   The test is: ZC starts PAN, ZR joins to it by association and send APS data packet, when ZC
   received packet, it sends packet to ZR, when ZR received packet, it sends
@@ -37,16 +37,17 @@ MAIN()
 {
   ARGV_UNUSED;
   
-  InitLib();
  /* Init device, load IB values from nvram or set it to default */
 #ifndef ZB8051
   ZB_INIT("zdo_zc", argv[1], argv[2]);
 #else
   ZB_INIT("zdo_zc", "1", "1");
 #endif
+  InitApp();
   ZB_IEEE_ADDR_COPY(ZB_PIB_EXTENDED_ADDRESS(), &g_ieee_addr);
   /* let's always be coordinator */
-  ZB_AIB().aps_designated_coordinator = 1;
+    ZB_AIB().aps_designated_coordinator = 1;
+    ZB_AIB().aps_channel_mask = (1l << 22);
 
   if (zdo_dev_start() != RET_OK)
   {
@@ -81,12 +82,16 @@ void zb_zdo_startup_complete(zb_uint8_t param) ZB_CALLBACK
 }
 
 void _Bulb_Level_Up() {
-    change_intensity(1);
+    increase_intensity();
 }
 
 void _Bulb_Change_Channel() {
-    change_color(1);
+    switch_channel();
 }
+
+void _Bulb_Toggle() {
+    toggle_channel();
+};
 
 /*
    Trivial test: dump all APS data received
@@ -107,6 +112,9 @@ void data_indication(zb_uint8_t param) ZB_CALLBACK
              break;    
        case B_CHANNEL_SWITCH:
             _Bulb_Change_Channel();
+            break;
+       case B_TOGGLE:
+            _Bulb_Toggle();
             break;
        default:         
              TRACE_MSG(TRACE_APS2, "NOT IMPLEMENTED YET", (FMT__0));

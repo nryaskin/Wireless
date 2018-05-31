@@ -51,7 +51,7 @@ BUTTON_INC = ./inc
 INCPATH += -I$(BUTTON_INC)
 include $(BUILD_HOME)/Options
 
-SRCS1 = zdo_bulb_test_zc.c
+SRCS1 = zdo_bulb_test_zc.c ./src/bulbs_app.c
 OBJS1 = ${SRCS1:.c=.o}
 SRCS2 = zdo_button_zr.c ./src/button.c
 OBJS2 = ${SRCS2:.c=.o}

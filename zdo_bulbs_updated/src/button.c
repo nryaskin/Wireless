@@ -2,8 +2,6 @@
 
 #define B_PIN_INTENSITY GPIO_Pin_4
 #define B_PIN_CHANNEL GPIO_Pin_3
-#define DELAY_TIME 100
-
 
 //PB4, PB3
 //EXTI4_IRQn -> EXTI4_IRQHandler
@@ -54,21 +52,15 @@ void Init_Peripherals(void)
 
 void EXTI4_IRQHandler(void){
     if(EXTI_GetITStatus(EXTI_Line4) != RESET) {
-        change_intensity();
-      EXTI_ClearITPendingBit(EXTI_Line4);
+        handle_left_button();
+        EXTI_ClearITPendingBit(EXTI_Line4);
     }
 }
 
-uint32_t systimer_timestamp;
-uint32_t delay;
-
 void EXTI3_IRQHandler(void){
-     if(EXTI_GetITStatus(EXTI_Line3) != RESET) {
-       //if(delay - systimer_timestamp > DELAY_TIME){
-         change_color();
-       //}
-       delay = systimer_timestamp + DELAY_TIME;
-      EXTI_ClearITPendingBit(EXTI_Line3);
+    if(EXTI_GetITStatus(EXTI_Line3) != RESET) {
+        handle_right_button();
+        EXTI_ClearITPendingBit(EXTI_Line3);
     }
 }
 

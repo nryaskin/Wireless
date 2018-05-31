@@ -69,9 +69,10 @@ PURPOSE:
  */
 static void set_bulb_level_up_command(zb_uint8_t param) ZB_CALLBACK;
 static void change_bulb_channel(zb_uint8_t param) ZB_CALLBACK;
+static void toggle_bulb_channel(zb_uint8_t param) ZB_CALLBACK;
 #define B_LEVEL_UP              1
 #define B_SWITCH_CHANNEL        2
-
+#define B_TOGGLE                4
 /*
   ZR joins to ZC, then sends APS packet.
  */
@@ -101,7 +102,7 @@ MAIN()
 
     ZB_64BIT_ADDR_ZERO(ieee_address);
     ieee_address[7] = 8;
-
+    ZB_AIB().aps_channel_mask = (1l << 22);
     zb_address_update(ieee_address, 0, ZB_FALSE, &ref);
   }
 
@@ -169,12 +170,57 @@ void change_bulb_channel(zb_uint8_t param) {
     ptr[0] = B_SWITCH_CHANNEL;
     ZB_SCHEDULE_CALLBACK(zb_apsde_data_request, ZB_REF_FROM_BUF(buf));
 }
+void toggle_bulb_channel(zb_uint8_t param) {
+    zb_apsde_data_req_t *req;
+    zb_uint8_t *ptr;
+    zb_buf_t *buf = (zb_buf_t *) ZB_BUF_FROM_REF(param);
 
-void change_color(){
-    ZB_GET_OUT_BUF_DELAYED(change_bulb_channel);
+    ZB_BUF_INITIAL_ALLOC(buf, 1, ptr);
+    req = ZB_GET_BUF_TAIL(buf, sizeof(zb_apsde_data_req_t));
+    fill_req_fields(req);
+
+    ptr[0] = B_TOGGLE;
+    ZB_SCHEDULE_CALLBACK(zb_apsde_data_request, ZB_REF_FROM_BUF(buf));
 }
 
-void change_intensity(){
-    ZB_GET_OUT_BUF_DELAYED(set_bulb_level_up_command);
+#define BOUNCE_DELAY_BI ZB_MILLISECONDS_TO_BEACON_INTERVAL(100)
+
+void schedule_function_alarm(zb_callback_t callback) {
+  zb_buf_t *buf = zb_get_out_buf();
+  ZB_SCHEDULE_ALARM(callback, ZB_REF_FROM_BUF(buf), BOUNCE_DELAY_BI);
 }
+
+zb_bool_t left_btn_pressed = ZB_FALSE, right_btn_pressed = ZB_FALSE;
+void button_click_timeout(zb_uint8_t param) ZB_CALLBACK
+{
+  if (left_btn_pressed && right_btn_pressed)
+  {
+        ZB_SCHEDULE_CALLBACK(toggle_bulb_channel, param);
+  }
+  else if(left_btn_pressed) 
+  {
+        ZB_SCHEDULE_CALLBACK(set_bulb_level_up_command, param);
+  }
+  else 
+  {
+        ZB_SCHEDULE_CALLBACK(change_bulb_channel, param);
+  }
+  left_btn_pressed = ZB_FALSE;
+  right_btn_pressed = ZB_FALSE;
+}
+
+void handle_left_button()
+{
+  left_btn_pressed = ZB_TRUE;
+  ZB_SCHEDULE_ALARM_CANCEL(button_click_timeout, ZB_ALARM_ALL_CB);
+  schedule_function_alarm(button_click_timeout);
+}
+
+void handle_right_button()
+{
+  right_btn_pressed = ZB_TRUE;
+  ZB_SCHEDULE_ALARM_CANCEL(button_click_timeout, ZB_ALARM_ALL_CB);
+  schedule_function_alarm(button_click_timeout);
+}
+
 /*! @} */

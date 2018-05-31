@@ -8,7 +8,7 @@
 
 void Init_Peripherals(void);
 
-extern void change_color();
-extern void change_intensity();
+extern void handle_left_button(void);
+extern void  handle_right_button(void); 
 
 #endif
